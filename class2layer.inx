@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+  <name>IfcClasses to Layers</name>
+  <id>effect.class2layer</id>
+
+  <label>New layers will be created from IfcClasses.</label>
+
+  <effect needs-live-preview="false">
+    <object-type>all</object-type>
+    <effects-menu>
+     <submenu name="IFC"/>
+    </effects-menu>
+  </effect>
+  <script>
+    <command location="inx" interpreter="python">class2layer.py</command>
+  </script>
+</inkscape-extension>
