@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:ev="http://www.w3.org/2001/xml-events" xmlns:ifc="http://www.ifcopenshell.org/ns" xmlns:xlink="http://www.w3.org/1999/xlink" baseProfile="full" data-scale="1/8&quot;=1'-0&quot;" height="81.44621990910929mm" id="root" version="1.1" viewBox="0 0 148.29999208450317 81.44621990910929" width="148.29999208450317mm">
+  <defs/>
+  <path class="GlobalId-30jhEHQZv1ywJwlh$nXkoF IfcAnnotation PredefinedType-TEXTLEADER" d="M 110.62500874201456 75.42019309000055 L 105.5346131324768 75.42019309000055 L 92.75841216246286 66.11211321151139"/>
+  <text dominant-baseline="middle" style="font-size: 0;" text-anchor="start" transform="translate(110.62501525878906, 75.42019653320312) rotate(-0.0)">
+    <tspan class="GlobalId-30jhEHQZv1ywJwlh$nXkoF IfcAnnotation PredefinedType-TEXTLEADER" dy="0em" x="0" y="0">BONNY</tspan>
+  </text>
+  <line class="GlobalId-2nUv7APwX52hq6h$cTN413 IfcAnnotation PredefinedType-DIMENSION" x1="20.17499542236328" x2="64.625" y1="75.16543579101562" y2="75.16543579101562"/>
+  <text dominant-baseline="baseline" style="font-size: 0;" text-anchor="middle" transform="translate(42.39999771118164, 74.16543579101562) rotate(0.0)">
+    <tspan class="DIMENSION" dy="0em" x="0" y="0">14' - 0&quot;</tspan>
+  </text>
+  <line class="GlobalId-1GpUKmEUT0hvZfnGrlVkxO IfcAnnotation PredefinedType-DIMENSION" x1="5.896945953369141" x2="5.896945953369141" y1="69.2981185913086" y2="24.848119735717773"/>
+  <text dominant-baseline="baseline" style="font-size: 0;" text-anchor="middle" transform="translate(4.896945953369141, 47.0731201171875) rotate(-90.00000250447816)">
+    <tspan class="DIMENSION" dy="0em" x="0" y="0">14' - 0&quot;</tspan>
+  </text>
+</svg>
