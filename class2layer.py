@@ -3,27 +3,28 @@
 import inkex
 from inkex import Group
 
-global layer_list
-global layer
-layer_list = []
+def class2layer(svg):
+    layer_list = []
+    xpath_expr = "//*[contains(concat(' ', normalize-space(@class), ' '), ' Ifc')]"
+    elements = svg.xpath(xpath_expr)
+    for element in elements:
+        classes = element.get('class').split()
+        IfcClass = [string for string in classes if string.startswith('Ifc')][0]
+        # inkex.utils.debug(IfcClass)
+        if IfcClass not in layer_list:
+            layer = svg.add(Group(id=IfcClass))
+            layer.set('inkscape:groupmode', 'layer')
+            layer.set('inkscape:label', IfcClass)
+            layer_list.append(IfcClass)
+        else:
+            layer = svg.getElementById(IfcClass)
+        layer.add(element)
+        # inkex.utils.debug(IfcClass)
+    return svg
 
 class CreateLayersFromClasses(inkex.EffectExtension):
     def effect(self):
-        svg = self.svg
-        for g in svg.xpath('//svg:g'):
-            g_class = g.get('class')
-            check_str = 'Ifc'
-            if g_class:
-                for class_name in g_class.split():
-                    if check_str in class_name:
-                        if class_name not in layer_list:
-                            layer = svg.add(Group(id=class_name))
-                            layer.set('inkscape:groupmode', 'layer')
-                            layer.set('inkscape:label', class_name)                          
-                            layer_list.append(class_name)
-                        else:
-                            layer = svg.getElementById(class_name)
-                        layer.add(g)
+        self.svg = class2layer(self.svg)
 
 if __name__ == '__main__':
     CreateLayersFromClasses().run()

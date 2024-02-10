@@ -86,11 +86,12 @@ def get_fit(u, csp, col):
 
 def class2layer(svg):
     layer_list = []
-    xpath_expr = "//*[starts-with(@class, 'Ifc')]"
+    xpath_expr = "//*[contains(concat(' ', normalize-space(@class), ' '), ' Ifc')]"
     elements = svg.xpath(xpath_expr)
     for element in elements:
         classes = element.get('class').split()
         IfcClass = [string for string in classes if string.startswith('Ifc')][0]
+        inkex.utils.debug(IfcClass)
         if IfcClass not in layer_list:
             layer = svg.add(Group(id=IfcClass))
             layer.set('inkscape:groupmode', 'layer')
@@ -467,7 +468,6 @@ class DxfOutlines(inkex.OutputExtension):
             for layer in self.options.layer_name:
                 if layer not in self.layernames:
                     inkex.errormsg(_("Warning: Layer '{}' not found!").format(layer))
-        inkex.utils.debug('test')
         stream.write(b"".join(self.dxf))
 
 
