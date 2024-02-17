@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<inkscape-extension xmlns="http://www.inkscape.org/namespace/inkscape/extension">
+    <name>IfcClass exdxf exporter</name>
+    <id>exdxf_exporter.effect</id>  
+    <effect implements-custom-gui="true">
+        <effects-menu>
+            <submenu name="Export" />
+        </effects-menu>
+    </effect>
+    <script>
+        <command location="inx" interpreter="python">ezdxf_exporter_effect.py</command>
+    </script>
+</inkscape-extension>

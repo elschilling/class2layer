@@ -54,6 +54,7 @@ from inkex.localization import inkex_gettext as _
 import ezdxf
 import io
 from uuid import uuid4
+import random
 
 def get_matrix(u, i, j):
     if j == i + 2:
@@ -87,7 +88,7 @@ def get_fit(u, csp, col):
         + u**3 * csp[3][col]
     )
 
-def class2layer(svg):
+def class2layer(self, svg):
     layer_list = []
     xpath_expr = "//*[contains(concat(' ', normalize-space(@class), ' '), ' Ifc')]"
     elements = svg.xpath(xpath_expr)
@@ -100,6 +101,10 @@ def class2layer(svg):
             layer.set('inkscape:groupmode', 'layer')
             layer.set('inkscape:label', IfcClass)
             layer_list.append(IfcClass)
+            self.dxf.layers.add(
+                name=IfcClass,
+                color=random.randint(1, 255)
+            )
         else:
             layer = svg.getElementById(IfcClass)
         layer.add(element)
@@ -120,7 +125,7 @@ def get_insert_point(node, mat):
     return [path[0][0][1][0], path[0][0][1][1]]
 
 class EzDxfExporter(inkex.OutputExtension):
-    # def add_arguments(self, pars):
+    def add_arguments(self, pars):
     #     pars.add_argument("--tab")
     #     pars.add_argument("-R", "--ROBO", type=inkex.Boolean, default=False)
     #     pars.add_argument("-P", "--POLY", type=inkex.Boolean, default=False)
@@ -136,7 +141,7 @@ class EzDxfExporter(inkex.OutputExtension):
     #     self.dxf = []
     #     self.handle = 255  # handle for DXF ENTITY
     #     self.layers = ["0"]
-    #     self.layer = "0"  # mandatory layer
+        self.layer = "0"  # mandatory layer
     #     self.layernames = []
     #     self.csp_old = [[0.0, 0.0]] * 4  # previous spline
     #     self.d = [0.0]  # knot vector
@@ -378,7 +383,7 @@ class EzDxfExporter(inkex.OutputExtension):
 
     def process_group(self, group):
         """Process group elements"""
-        # if isinstance(group, Layer):
+        if isinstance(group, Layer):
         #     style = group.style
         #     if (
         #         style("display") == "none"
@@ -386,14 +391,14 @@ class EzDxfExporter(inkex.OutputExtension):
         #         and self.options.layer_option == "visible"
         #     ):
         #         return
-        #     layer = group.label
+            layer = group.label
         #     if self.options.layer_name and self.options.layer_option == "name":
         #         if not layer.lower() in self.options.layer_name:
         #             return
 
         #     layer = layer.replace(" ", "_")
-        #     if layer in self.layers:
-        #         self.layer = layer
+            # if layer in self.layers:
+            self.layer = layer
         block_def = self.dxf.blocks.new(str(uuid4()))
         trans = group.get("transform")
         insert_point = []
@@ -422,7 +427,8 @@ class EzDxfExporter(inkex.OutputExtension):
             inkex.utils.debug(block_def.name)
             self.msp.add_blockref(
                             name=block_def.name,
-                            insert=insert_point
+                            insert=insert_point,
+                            dxfattribs={"layer": self.layer}
                             )
 
     def save(self, stream):
@@ -442,7 +448,6 @@ class EzDxfExporter(inkex.OutputExtension):
         # if len(self.svg.xpath("//svg:use|//svg:flowRoot|//svg:text")) > 0:
         #     self.preprocess(["flowRoot", "text"])
         # # Create layers from IfcClasses 
-        # self.svg = class2layer(self.svg)
         # # Split user layer data into a list: "layerA,layerb,LAYERC" becomes ["layera", "layerb", "layerc"]
         # if self.options.layer_name:
         #     self.options.layer_name = self.options.layer_name.lower().split(",")
@@ -509,9 +514,8 @@ class EzDxfExporter(inkex.OutputExtension):
 
         self.dxf = ezdxf.new()
         self.msp = self.dxf.modelspace()
-        self.msp.add_line((0,0), (1,0))
+        self.svg = class2layer(self, self.svg)
         self.process_group(self.svg)
-        # convert_paths()
         stream.write(to_binary_data(self.dxf))
 
 

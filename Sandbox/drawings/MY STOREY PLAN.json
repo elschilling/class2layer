@@ -1,0 +1,122 @@
+[
+    {
+        "Export": true,
+        "IfcClass": "IfcBeam",
+        "LayerName": "A-BEAM",
+        "Color": 17,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcRailing",
+        "LayerName": "A-RAILING",
+        "Color": 53,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcPile",
+        "LayerName": "A-PILE",
+        "Color": 13,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcWall",
+        "LayerName": "A-WALL",
+        "Color": 26,
+        "Lineweight": 211,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcStairFlight",
+        "LayerName": "A-STAIRFLIGHT",
+        "Color": 2,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcSlab",
+        "LayerName": "A-SLAB",
+        "Color": 42,
+        "Lineweight": 140,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcColumn",
+        "LayerName": "A-COLUMN",
+        "Color": 33,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcDuctSegment",
+        "LayerName": "A-DUCTSEGMENT",
+        "Color": 120,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcPipeSegment",
+        "LayerName": "A-PIPESEGMENT",
+        "Color": 131,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcFurniture",
+        "LayerName": "A-FURNITURE",
+        "Color": 96,
+        "Lineweight": 100,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcElectricAppliance",
+        "LayerName": "A-ELECTRICAPPLIANCE",
+        "Color": 132,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcSanitaryTerminal",
+        "LayerName": "A-SANITARYTERMINAL",
+        "Color": 136,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcDoor",
+        "LayerName": "A-DOOR",
+        "Color": 140,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcWindow",
+        "LayerName": "A-WINDOW",
+        "Color": 160,
+        "Lineweight": 0,
+        "Linetype": "Continuous"
+    },
+    {
+        "Export": true,
+        "IfcClass": "IfcAnnotation",
+        "LayerName": "A-ANNOTATION",
+        "Color": 253,
+        "Lineweight": 0,
+        "Linetype": "Dot"
+    }
+]
