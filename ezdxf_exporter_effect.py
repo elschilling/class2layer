@@ -38,6 +38,7 @@ from inkex import (
     Line,
     Circle,
     Ellipse,
+    TextElement,
 )
 
 import ezdxf
@@ -46,17 +47,28 @@ import gi
 import io
 import os
 import json
+import re
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 def get_insert_point(node, mat):
-    if not isinstance(node, (PathElement, Rectangle, Line, Circle, Ellipse)):
+    if not isinstance(node, (PathElement, Rectangle, Line, Circle, Ellipse, TextElement)):
             return
+    if isinstance(node, TextElement):
+        trans = Transform(mat) @ node.transform
+        return trans.apply_to_point([node.x, node.y])
     path = node.path.to_superpath().transform(Transform(mat) @ node.transform)
     return [path[0][0][1][0], path[0][0][1][1]]
 
 class EzDxfExporter(inkex.EffectExtension):
+
+    def __init__(self):
+        super().__init__()
+        # Initialize attributes
+        self.export_options = []
+        self.layer_list = []
+        self.color = 7  # Default color (black)
 
     class ExportWindow(Gtk.Window):
         def __init__(self, exporter):
@@ -192,16 +204,46 @@ class EzDxfExporter(inkex.EffectExtension):
             dialog.add_filter(filter_dxf)
 
             response = dialog.run()
+            filename = None
+
             if response == Gtk.ResponseType.OK:
                 filename = dialog.get_filename()
-                if not filename.endswith('.dxf'):
+                if filename and not filename.endswith('.dxf'):
                     filename += '.dxf'
-                self.exporter.create_dxf()
-                self.exporter.dxf.saveas(filename)
-            elif response == Gtk.ResponseType.CANCEL:
-                pass
-
             dialog.destroy()
+
+            if response == Gtk.ResponseType.OK and filename:
+                try:                 
+                    # Create the DXF
+                    self.exporter.create_dxf()
+                    
+                    # Save the file
+                    self.exporter.dxf.saveas(filename)
+                    
+                    # Show success message
+                    success_dialog = Gtk.MessageDialog(
+                        transient_for=self,
+                        flags=0,
+                        message_type=Gtk.MessageType.INFO,
+                        buttons=Gtk.ButtonsType.OK,
+                        text=f"DXF file exported successfully to:\n{filename}"
+                    )
+                    success_dialog.run()
+                    success_dialog.destroy()
+                    
+                except Exception as e:
+                    import traceback
+                    traceback.print_exc()
+                    
+                    error_dialog = Gtk.MessageDialog(
+                        transient_for=self,
+                        flags=0,
+                        message_type=Gtk.MessageType.ERROR,
+                        buttons=Gtk.ButtonsType.OK,
+                        text=f"Error exporting DXF:\n{str(e)}"
+                    )
+                    error_dialog.run()
+                    error_dialog.destroy()
 
         def on_export_button_clicked(self, button):
             dialog = Gtk.FileChooserDialog(
@@ -278,13 +320,44 @@ class EzDxfExporter(inkex.EffectExtension):
         window.show_all()
         Gtk.main()
 
+    def find_text_parent(self, element):
+        """Find the parent text element if this element is a child of a text element"""
+        parent = element.getparent()
+        while parent is not None:
+            if isinstance(parent, TextElement):
+                return parent
+            parent = parent.getparent()
+        return None
+
     def class2layer(self):
+        inkex.utils.errormsg("elements")
         self.layer_list = []
         xpath_expr = "//*[contains(concat(' ', normalize-space(@class), ' '), ' Ifc')]"
         elements = self.svg.xpath(xpath_expr)
+        # Keep track of elements we've already processed to avoid duplicates
+        processed_elements = set()
+        
         for element in elements:
+            # Check if this element is a child of a text element (like tspan, tref, etc.)
+            text_parent = self.find_text_parent(element)
+            
+            # If this element is part of a text element, move the parent text element instead
+            if text_parent is not None:
+                element_to_move = text_parent
+            else:
+                element_to_move = element
+            
+            # Skip if we've already processed this element
+            element_id = element_to_move.get_id()
+            if element_id in processed_elements:
+                continue
+            
+            processed_elements.add(element_id)
+            
+            # Get IFC class from the original element (not necessarily the one we're moving)
             classes = element.get('class').split()
             IfcClass = [string for string in classes if string.startswith('Ifc')][0]
+            
             if IfcClass not in self.layer_list:
                 layer = self.svg.add(Group(id=IfcClass))
                 layer.set('inkscape:groupmode', 'layer')
@@ -292,29 +365,30 @@ class EzDxfExporter(inkex.EffectExtension):
                 self.layer_list.append(IfcClass)
             else:
                 layer = self.svg.getElementById(IfcClass)
-            layer.add(element)
+            
+            # Move the element (or its text parent) to the layer
+            if element_to_move.getparent() is not None:
+                element_to_move.getparent().remove(element_to_move)
+                layer.add(element_to_move)
 
     def create_dxf_layers(self):
+        """Create DXF layers based on export options"""
         for entry in self.export_options:
-            self.dxf.layers.add(
-                name=entry['LayerName'],
-                color=entry['Color'],
-                lineweight=entry['Lineweight'],
-                linetype=entry['Linetype'],
-            )
+            layer_name = entry['LayerName']
+            if not self.dxf.layers.has_entry(layer_name):
+                self.dxf.layers.add(
+                    name=layer_name,
+                    color=entry['Color'],
+                    lineweight=entry['Lineweight'],
+                    linetype=entry['Linetype'],
+                )
 
     def filter_svg(self):
-        layers = []
-        for layer in self.export_options:
-            layers.append(layer['IfcClass'])
-        root = self.document.getroot()
-        ns = {'inkscape': 'http://www.inkscape.org/namespaces/inkscape'}
-        groups = root.findall(".//{http://www.w3.org/2000/svg}g[@inkscape:label]", namespaces=ns)
-        filtered_groups = [group for group in groups if group.get('{http://www.inkscape.org/namespaces/inkscape}label') in layers]
-        for group in groups:
-            if group not in filtered_groups:
-                root.remove(group)
-        return root
+        export_labels = {layer['IfcClass'] for layer in self.export_options}
+        layers = self.svg.xpath('//svg:g[@inkscape:groupmode="layer"]', namespaces=inkex.NSS)
+        for layer in layers:
+            if layer.label not in export_labels:
+                layer.delete()
 
     def dxf_add(self, str):
         self.dxf.append(str.encode(self.options.char_encode))
@@ -324,13 +398,77 @@ class EzDxfExporter(inkex.EffectExtension):
         line = block.add_line((csp[0][0], csp[0][1]),(csp[1][0], csp[1][1]))
         line.translate(-first_coord[0], -first_coord[1], 0)
 
+    def process_text(self, node, mat, block, insert_point, layer_name="0"):
+        """Process a text element"""
+        if not isinstance(node, TextElement):
+            return
+
+        text = node.get_text()
+        if not text or not text.strip():
+            return
+
+        # Get font size
+        font_size = 1.0  # default
+        font_size_str = node.style.get('font-size', '1.0')
+        if font_size_str:
+            try:
+                # Use regex to extract the numeric part of the font size
+                match = re.search(r'[0-9.]+', font_size_str)
+                if match:
+                    font_size = float(match.group(0))
+                    if font_size == 0:
+                        font_size = 1.0 # Reset to default if 0
+            except (ValueError, AttributeError):
+                pass  # use default
+
+        # Get text color from layer instead of individual element
+        color = 7  # default is black
+        for entry in self.export_options:
+            if entry['LayerName'] == layer_name:
+                color = entry['Color']
+                break
+
+        # Calculate the combined transform matrix
+        combined_transform = Transform(mat) @ node.transform
+        
+        # Get position and apply transform
+        pos = get_insert_point(node, mat)
+
+        # Extract rotation from the combined transform matrix
+        import math
+        rotation_radians = math.atan2(combined_transform.b, combined_transform.a)
+        rotation_degrees = math.degrees(rotation_radians)
+        
+
+        # Get text alignment
+        text_anchor = node.style.get('text-anchor', 'start')
+        halign = ezdxf.const.LEFT
+        if text_anchor == 'middle':
+            halign = ezdxf.const.CENTER
+        elif text_anchor == 'end':
+            halign = ezdxf.const.RIGHT
+
+        dxfattribs = {
+            'height': font_size,
+            'color': color,
+            'insert': (pos[0], pos[1]),
+            'halign': halign,
+            'rotation': rotation_degrees,
+        }
+
+        text_entity = block.add_text(text, dxfattribs=dxfattribs)
+        
+        if insert_point:
+            text_entity.translate(-insert_point[0], -insert_point[1], 0)
+
     def process_shape(self, node, mat, block, insert_point):
+        """Process individual shapes"""
         rgb = (0, 0, 0)
         style = node.style("stroke")
         if style is not None and isinstance(style, inkex.Color):
             rgb = style.to_rgb()
         hsl = colors.rgb_to_hsl(rgb[0] / 255.0, rgb[1] / 255.0, rgb[2] / 255.0)
-        self.color = 7  # default is blac
+        self.color = 7  # default is black
         if hsl[2]:
             self.color = 1 + (int(6 * hsl[0] + 0.5) % 6)  # use 6 hues
 
@@ -346,7 +484,7 @@ class EzDxfExporter(inkex.EffectExtension):
                 if (s[1] == s[2] and e[0] == e[1]):
                     self.dxf_line(block, [s[1], e[1]], insert_point)
 
-    def process_clone(self, node):
+    def process_clone(self, node, layer):
         """Process a clone node, looking for internal paths"""
         trans = node.get("transform")
         x = node.get("x")
@@ -366,62 +504,76 @@ class EzDxfExporter(inkex.EffectExtension):
         refnode = self.svg.getElementById(refid[1:])
         if refnode is not None:
             if isinstance(refnode, Group):
-                self.process_group(refnode)
+                self.process_group(refnode, layer)
             elif isinstance(refnode, Use):
-                self.process_clone(refnode)
+                self.process_clone(refnode, layer)
             else:
                 self.process_shape(refnode, self.groupmat[-1])
         # pop transform
         if trans or x or y:
             self.groupmat.pop()
 
-    def process_group(self, group):
-        """Process group elements"""
-        if isinstance(group, Layer):
+    def process_group(self, group, layer="0"):
+        current_layer = layer
+        if group.get('inkscape:groupmode') == 'layer':
+            layer_label = group.get('inkscape:label')
             for entry in self.export_options:
-                if entry['IfcClass'] == group.label:
-                    self.layer = entry['LayerName']
+                if entry['IfcClass'] == layer_label:
+                    current_layer = entry['LayerName']
 
         block_def = self.dxf.blocks.new(str(uuid4()))
         trans = group.get("transform")
         insert_point = []
+        
         if trans:
             self.groupmat.append(Transform(self.groupmat[-1]) @ Transform(trans))
+        
         for node in group:
             try:
                 if isinstance(node, Group):
-                    self.process_group(node)
+                    self.process_group(node, current_layer)
                 elif isinstance(node, Use):
-                    self.process_clone(node)
+                    self.process_clone(node, current_layer)
                 else:
                     if not insert_point:
-                        insert_point = get_insert_point(node, self.groupmat[-1])                   
-                    self.process_shape(node, self.groupmat[-1], block_def, insert_point)
+                        insert_point = get_insert_point(node, self.groupmat[-1])
+                    if isinstance(node, TextElement):
+                        # Pass the current layer name to process_text
+                        self.process_text(node, self.groupmat[-1], block_def, insert_point, current_layer)
+                    else:
+                        self.process_shape(node, self.groupmat[-1], block_def, insert_point)
             except RecursionError as e:
                 raise inkex.AbortExtension(
-                    (
-                        'Too many nested groups. Please use the "Deep Ungroup" extension first.'
-                    )
-                ) from e  # pylint: disable=line-too-long
+                    'Too many nested groups. Please use the "Deep Ungroup" extension first.'
+                ) from e
+        
         if trans:
             self.groupmat.pop()
+        
         if insert_point:
             self.msp.add_blockref(
-                            name=block_def.name,
-                            insert=insert_point,
-                            dxfattribs={"layer": self.layer}
-                            )
+                name=block_def.name,
+                insert=insert_point,
+                dxfattribs={"layer": current_layer}
+            )
 
     def create_dxf(self):
-        scale = self.svg.inkscape_scale
-        self.groupmat = [
-            [[scale, 0.0, 0.0], [0.0, -scale, self.svg.viewbox_height * scale]]
-        ]
-        self.dxf = ezdxf.new(setup=True)
-        self.msp = self.dxf.modelspace()
-        self.create_dxf_layers()
-        export_svg = self.filter_svg()
-        self.process_group(export_svg)
+        try:
+            scale = self.svg.inkscape_scale
+            self.groupmat = [
+                [[scale, 0.0, 0.0], [0.0, -scale, self.svg.viewbox_height * scale]]
+            ]
+            self.dxf = ezdxf.new(setup=True)
+            self.msp = self.dxf.modelspace()
+            self.create_dxf_layers()
+            self.filter_svg()
+            self.process_group(self.svg, "0")
+
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise
 
     def effect(self):
         self.class2layer()
