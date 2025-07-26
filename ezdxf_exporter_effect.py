@@ -393,13 +393,13 @@ class EzDxfExporter(inkex.EffectExtension):
     def dxf_add(self, str):
         self.dxf.append(str.encode(self.options.char_encode))
 
-    def dxf_line(self, block, csp, first_coord):
-        """Draw a line in the DXF format"""
-        line = block.add_line((csp[0][0], csp[0][1]),(csp[1][0], csp[1][1]))
-        line.translate(-first_coord[0], -first_coord[1], 0)
+    def dxf_line(self, csp, layer_name="0"):
+        """Draw a line directly in modelspace"""
+        dxfattribs = {"layer": layer_name, "color": 256}  # 256 = BYLAYER
+        self.msp.add_line((csp[0][0], csp[0][1]), (csp[1][0], csp[1][1]), dxfattribs=dxfattribs)
 
-    def process_text(self, node, mat, block, insert_point, layer_name="0"):
-        """Process a text element"""
+    def process_text(self, node, mat, layer_name="0"):
+        """Process a text element directly in modelspace"""
         if not isinstance(node, TextElement):
             return
 
@@ -449,20 +449,18 @@ class EzDxfExporter(inkex.EffectExtension):
             halign = ezdxf.const.RIGHT
 
         dxfattribs = {
+            'layer': layer_name,
             'height': font_size,
-            'color': color,
+            'color': 256,  # 256 = BYLAYER
             'insert': (pos[0], pos[1]),
             'halign': halign,
             'rotation': rotation_degrees,
         }
 
-        text_entity = block.add_text(text, dxfattribs=dxfattribs)
-        
-        if insert_point:
-            text_entity.translate(-insert_point[0], -insert_point[1], 0)
+        self.msp.add_text(text, dxfattribs=dxfattribs)
 
-    def process_shape(self, node, mat, block, insert_point):
-        """Process individual shapes"""
+    def process_shape(self, node, mat, layer_name="0"):
+        """Process individual shapes directly in modelspace"""
         rgb = (0, 0, 0)
         style = node.style("stroke")
         if style is not None and isinstance(style, inkex.Color):
@@ -482,7 +480,7 @@ class EzDxfExporter(inkex.EffectExtension):
                 s = sub[i]
                 e = sub[i + 1]
                 if (s[1] == s[2] and e[0] == e[1]):
-                    self.dxf_line(block, [s[1], e[1]], insert_point)
+                    self.dxf_line([s[1], e[1]], layer_name)
 
     def process_clone(self, node, layer):
         """Process a clone node, looking for internal paths"""
@@ -508,7 +506,7 @@ class EzDxfExporter(inkex.EffectExtension):
             elif isinstance(refnode, Use):
                 self.process_clone(refnode, layer)
             else:
-                self.process_shape(refnode, self.groupmat[-1])
+                self.process_shape(refnode, self.groupmat[-1], layer)
         # pop transform
         if trans or x or y:
             self.groupmat.pop()
@@ -521,9 +519,7 @@ class EzDxfExporter(inkex.EffectExtension):
                 if entry['IfcClass'] == layer_label:
                     current_layer = entry['LayerName']
 
-        block_def = self.dxf.blocks.new(str(uuid4()))
         trans = group.get("transform")
-        insert_point = []
         
         if trans:
             self.groupmat.append(Transform(self.groupmat[-1]) @ Transform(trans))
@@ -535,13 +531,11 @@ class EzDxfExporter(inkex.EffectExtension):
                 elif isinstance(node, Use):
                     self.process_clone(node, current_layer)
                 else:
-                    if not insert_point:
-                        insert_point = get_insert_point(node, self.groupmat[-1])
                     if isinstance(node, TextElement):
                         # Pass the current layer name to process_text
-                        self.process_text(node, self.groupmat[-1], block_def, insert_point, current_layer)
+                        self.process_text(node, self.groupmat[-1], current_layer)
                     else:
-                        self.process_shape(node, self.groupmat[-1], block_def, insert_point)
+                        self.process_shape(node, self.groupmat[-1], current_layer)
             except RecursionError as e:
                 raise inkex.AbortExtension(
                     'Too many nested groups. Please use the "Deep Ungroup" extension first.'
@@ -549,13 +543,6 @@ class EzDxfExporter(inkex.EffectExtension):
         
         if trans:
             self.groupmat.pop()
-        
-        if insert_point:
-            self.msp.add_blockref(
-                name=block_def.name,
-                insert=insert_point,
-                dxfattribs={"layer": current_layer}
-            )
 
     def create_dxf(self):
         try:
