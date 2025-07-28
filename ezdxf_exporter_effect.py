@@ -69,8 +69,7 @@ class EzDxfExporter(inkex.EffectExtension):
         self.export_options = []
         self.layer_list = []
         self.color = 7  # Default color (black)
-        self.use_separate_blocks = False  # New option for separate blocks
-        self.block_counter = 0
+        self.use_separate_blocks = False  # Option for separate blocks vs direct model space
 
     class ExportWindow(Gtk.Window):
         def __init__(self, exporter):
@@ -131,7 +130,7 @@ class EzDxfExporter(inkex.EffectExtension):
             
             # Add checkbox for separate blocks option
             self.separate_blocks_checkbox = Gtk.CheckButton(label="Create Separate Blocks per Element")
-            self.separate_blocks_checkbox.set_active(False)  # Default to group blocks
+            self.separate_blocks_checkbox.set_active(False)  # Default to direct model space
             
             hbox.pack_start(treeview, True, True, 0)
             hbox.pack_start(self.separate_blocks_checkbox, False, False, 0)
@@ -185,8 +184,8 @@ class EzDxfExporter(inkex.EffectExtension):
 
         def on_click_export(self, button):
             self.exporter.export_options = []
-            # FIXED: Invert the checkbox value so it aligns with the actual behavior
-            self.exporter.use_separate_blocks = not self.separate_blocks_checkbox.get_active()
+            # Store the checkbox state - True means use blocks, False means direct model space
+            self.exporter.use_separate_blocks = self.separate_blocks_checkbox.get_active()
             for row in self.liststore:
                 if row[0]:
                     self.exporter.export_options.append({
@@ -403,13 +402,14 @@ class EzDxfExporter(inkex.EffectExtension):
     def dxf_add(self, str):
         self.dxf.append(str.encode(self.options.char_encode))
 
-    def dxf_line(self, block, csp, first_coord):
-        """Draw a line in the DXF format - following the older working script pattern"""
-        line = block.add_line((csp[0][0], csp[0][1]),(csp[1][0], csp[1][1]))
-        line.translate(-first_coord[0], -first_coord[1], 0)
+    def dxf_line(self, target, csp, offset=None, layer_name="0"):
+        """Draw a line in the DXF format - works with both blocks and modelspace"""
+        line = target.add_line((csp[0][0], csp[0][1]), (csp[1][0], csp[1][1]), dxfattribs={'layer': layer_name, 'color': 256})
+        if offset:
+            line.translate(-offset[0], -offset[1], 0)
 
-    def process_text(self, node, mat, block, insert_point, layer_name="0"):
-        """Process a text element - following the older working script pattern"""
+    def process_text(self, node, mat, target, layer_name="0", offset=None):
+        """Process a text element - works with both blocks and modelspace"""
         if not isinstance(node, TextElement):
             return
 
@@ -460,19 +460,20 @@ class EzDxfExporter(inkex.EffectExtension):
 
         dxfattribs = {
             'height': font_size,
-            'color': color,
+            'color': 256,  # ByLayer color
             'insert': (pos[0], pos[1]),
             'halign': halign,
             'rotation': rotation_degrees,
+            'layer': layer_name,
         }
 
-        text_entity = block.add_text(text, dxfattribs=dxfattribs)
+        text_entity = target.add_text(text, dxfattribs=dxfattribs)
         
-        if insert_point:
-            text_entity.translate(-insert_point[0], -insert_point[1], 0)
+        if offset:
+            text_entity.translate(-offset[0], -offset[1], 0)
 
-    def process_shape(self, node, mat, block, insert_point):
-        """Process individual shapes - following the older working script pattern"""
+    def process_shape(self, node, mat, target, layer_name="0", offset=None):
+        """Process individual shapes - works with both blocks and modelspace"""
         rgb = (0, 0, 0)
         style = node.style("stroke")
         if style is not None and isinstance(style, inkex.Color):
@@ -492,9 +493,9 @@ class EzDxfExporter(inkex.EffectExtension):
                 s = sub[i]
                 e = sub[i + 1]
                 if (s[1] == s[2] and e[0] == e[1]):
-                    self.dxf_line(block, [s[1], e[1]], insert_point)
+                    self.dxf_line(target, [s[1], e[1]], offset, layer_name)
 
-    def process_clone(self, node, layer, block=None, insert_point=None):
+    def process_clone(self, node, layer):
         """Process a clone node, looking for internal paths"""
         trans = node.get("transform")
         x = node.get("x")
@@ -514,45 +515,25 @@ class EzDxfExporter(inkex.EffectExtension):
         refnode = self.svg.getElementById(refid[1:])
         if refnode is not None:
             if isinstance(refnode, Group):
-                self.process_group(refnode, layer, block, insert_point)
+                self.process_group(refnode, layer)
             elif isinstance(refnode, Use):
-                self.process_clone(refnode, layer, block, insert_point)
+                self.process_clone(refnode, layer)
             else:
-                # For separate blocks mode, create individual blocks for clones
-                if self.use_separate_blocks and block is None:
-                    self.create_separate_element_block(refnode, self.groupmat[-1], layer)
+                if isinstance(refnode, TextElement):
+                    if not self.use_separate_blocks:
+                        self.process_text(refnode, self.groupmat[-1], self.msp, layer)
+                    # In blocks mode, this will be handled by the group processing
                 else:
-                    current_block = block if block else self.current_block
-                    current_insert = insert_point if insert_point else self.current_insert_point
-                    if isinstance(refnode, TextElement):
-                        self.process_text(refnode, self.groupmat[-1], current_block, current_insert, layer)
-                    else:
-                        self.process_shape(refnode, self.groupmat[-1], current_block, current_insert)
+                    if not self.use_separate_blocks:
+                        self.process_shape(refnode, self.groupmat[-1], self.msp, layer)
+                    # In blocks mode, this will be handled by the group processing
         # pop transform
         if trans or x or y:
             self.groupmat.pop()
 
-    def create_separate_element_block(self, node, mat, layer_name):
-        """Create a separate block for individual element when in separate blocks mode"""
-        self.block_counter += 1
-        block_name = f"Element_{self.block_counter}_{node.get_id() or 'unnamed'}"
-        block_def = self.dxf.blocks.new(block_name)
-        
-        insert_point = get_insert_point(node, mat)
-        
-        if isinstance(node, TextElement):
-            self.process_text(node, mat, block_def, insert_point, layer_name)
-        else:
-            self.process_shape(node, mat, block_def, insert_point)
-        
-        if insert_point:
-            self.msp.add_blockref(
-                name=block_name,
-                insert=insert_point,
-                dxfattribs={"layer": layer_name}
-            )
 
-    def process_group(self, group, layer="0", block=None, insert_point=None):
+
+    def process_group(self, group, layer="0"):
         current_layer = layer
         if group.get('inkscape:groupmode') == 'layer':
             layer_label = group.get('inkscape:label')
@@ -560,51 +541,61 @@ class EzDxfExporter(inkex.EffectExtension):
                 if entry['IfcClass'] == layer_label:
                     current_layer = entry['LayerName']
 
-        # Create block following the older script pattern
-        block_def = self.dxf.blocks.new(str(uuid4()))
         trans = group.get("transform")
-        group_insert_point = []
-        
-        # Store current block info for nested processing
-        self.current_block = block_def
-        self.current_insert_point = group_insert_point
         
         if trans:
             self.groupmat.append(Transform(self.groupmat[-1]) @ Transform(trans))
         
-        for node in group:
-            try:
-                if isinstance(node, Group):
-                    self.process_group(node, current_layer)
-                elif isinstance(node, Use):
-                    self.process_clone(node, current_layer)
-                else:
-                    # For separate blocks mode, create individual blocks
-                    if self.use_separate_blocks:
-                        self.create_separate_element_block(node, self.groupmat[-1], current_layer)
+        # If use_separate_blocks is False, add directly to model space
+        if not self.use_separate_blocks:
+            for node in group:
+                try:
+                    if isinstance(node, Group):
+                        self.process_group(node, current_layer)
+                    elif isinstance(node, Use):
+                        self.process_clone(node, current_layer)
                     else:
-                        # Original behavior - add to group block
-                        if not group_insert_point:
-                            group_insert_point = get_insert_point(node, self.groupmat[-1])
                         if isinstance(node, TextElement):
-                            self.process_text(node, self.groupmat[-1], block_def, group_insert_point, current_layer)
+                            self.process_text(node, self.groupmat[-1], self.msp, current_layer)
                         else:
-                            self.process_shape(node, self.groupmat[-1], block_def, group_insert_point)
-            except RecursionError as e:
-                raise inkex.AbortExtension(
-                    'Too many nested groups. Please use the "Deep Ungroup" extension first.'
-                ) from e
+                            self.process_shape(node, self.groupmat[-1], self.msp, current_layer)
+                except RecursionError as e:
+                    raise inkex.AbortExtension(
+                        'Too many nested groups. Please use the "Deep Ungroup" extension first.'
+                    ) from e
+        else:
+            # Create block for group (original behavior)
+            block_def = self.dxf.blocks.new(str(uuid4()))
+            insert_point = []
+            
+            for node in group:
+                try:
+                    if isinstance(node, Group):
+                        self.process_group(node, current_layer)
+                    elif isinstance(node, Use):
+                        self.process_clone(node, current_layer)
+                    else:
+                        if not insert_point:
+                            insert_point = get_insert_point(node, self.groupmat[-1])
+                        if isinstance(node, TextElement):
+                            self.process_text(node, self.groupmat[-1], block_def, current_layer, insert_point)
+                        else:
+                            self.process_shape(node, self.groupmat[-1], block_def, current_layer, insert_point)
+                except RecursionError as e:
+                    raise inkex.AbortExtension(
+                        'Too many nested groups. Please use the "Deep Ungroup" extension first.'
+                    ) from e
+            
+            # Add block reference if we have elements
+            if insert_point:
+                self.msp.add_blockref(
+                    name=block_def.name,
+                    insert=insert_point,
+                    dxfattribs={"layer": current_layer}
+                )
         
         if trans:
             self.groupmat.pop()
-        
-        # Only add block reference if not in separate blocks mode or if it has content
-        if group_insert_point and not self.use_separate_blocks:
-            self.msp.add_blockref(
-                name=block_def.name,
-                insert=group_insert_point,
-                dxfattribs={"layer": current_layer}
-            )
 
     def create_dxf(self):
         try:
@@ -614,7 +605,6 @@ class EzDxfExporter(inkex.EffectExtension):
             ]
             self.dxf = ezdxf.new(setup=True)
             self.msp = self.dxf.modelspace()
-            self.block_counter = 0
             self.create_dxf_layers()
             self.filter_svg()
             self.process_group(self.svg, "0")
